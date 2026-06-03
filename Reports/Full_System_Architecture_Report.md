@@ -723,9 +723,367 @@ I:\entire system - boulevard\android system\
 
 ---
 
-## 13. Conclusion
+## 13. Future Integration with External Systems (Home Services & Beyond)
+
+### 13.1 Vision
+
+The Boulevard Merchant PWA is designed to be the **merchant-facing frontend** of a larger ecosystem. Future integrations will connect it with **external service management platforms** (e.g., home cleaning, maintenance, repair services) and **third-party logistics/ERP systems** to create a unified commerce experience.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    FUTURE ECOSYSTEM ARCHITECTURE                      │
+└─────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────┐     ┌──────────────────────┐
+  │  Boulevard Merchant  │     │  External Home        │
+  │  PWA (This System)   │     │  Service Platforms    │
+  │                      │     │  (Cleaners, Repairs,  │
+  │  - Orders            │◄───►│   Maintenance, etc.)  │
+  │  - Stock             │     │                      │
+  │  - Push Notifications│     │  - Service Scheduling │
+  │  - Merchant Auth     │     │  - Technician Mgmt   │
+  └──────────┬───────────┘     │  - CRM                │
+             │                 └──────────┬───────────┘
+             │                            │
+             ▼                            ▼
+  ┌──────────────────────────────────────────────────────────────────┐
+  │                 INTEGRATION GATEWAY (API Layer)                   │
+  │                                                                   │
+  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐ │
+  │  │ REST API │  │ Webhooks │  │ Message  │  │ OAuth 2.0 / SSO │ │
+  │  │ (OpenAPI)│  │ (Events) │  │ Queue    │  │ Identity Bridge │ │
+  │  │          │  │          │  │ (Pub/Sub)│  │                  │ │
+  │  └──────────┘  └──────────┘  └──────────┘  └──────────────────┘ │
+  └──────────────────────────────────────────────────────────────────┘
+             │                            │
+             ▼                            ▼
+  ┌──────────────────────┐     ┌──────────────────────┐
+  │  Boulevard Backend   │     │  External Systems    │
+  │  (Current API)       │     │                      │
+  │                      │     │  - Home Service CRMs │
+  │  - Merchants DB      │     │  - ERP (Odoo/SAP)    │
+  │  - Orders DB         │     │  - Payment Gateways  │
+  │  - Products DB       │     │  - Logistics/3PL     │
+  │  - Notification Svc  │     │  - POS Systems       │
+  └──────────────────────┘     └──────────────────────┘
+```
+
+### 13.2 Integration Patterns
+
+#### Pattern A: REST API Bridge (Direct Integration)
+
+The existing API at `https://boulevard.r-y-x.net/pwa` can be extended with new endpoints for external partners.
+
+| Endpoint | Method | Purpose | External System Use |
+|----------|--------|---------|-------------------|
+| `/api/v2/external/service-orders` | POST | Create service order from external system | Home service platforms push new orders |
+| `/api/v2/external/service-orders/{id}` | GET | Check order status | External systems poll for updates |
+| `/api/v2/external/service-orders/{id}/status` | PUT | Update order status | Mark as "in progress", "completed", "cancelled" |
+| `/api/v2/external/stock/sync` | POST | Bulk stock sync from warehouse/ERP | ERP pushes inventory updates |
+| `/api/v2/external/products/sync` | POST | Bulk product catalog sync | External PIM systems push catalog changes |
+| `/api/v2/external/merchants/{id}/availability` | PUT | Set merchant availability slots | Home service scheduling integration |
+
+**Required changes to PWA:**
+- Add a new API client method for external webhook registration
+- Add UI for merchants to view/manage external service integrations
+- Add settings page for API keys / integration tokens
+
+#### Pattern B: Webhook Events (Event-Driven)
+
+The system publishes events that external systems subscribe to via webhooks.
+
+| Event | Payload | Trigger | External Use Case |
+|-------|---------|---------|-------------------|
+| `order.created` | `{orderId, merchantId, items, customer}` | New order placed | Home service platform schedules service |
+| `order.status.changed` | `{orderId, oldStatus, newStatus}` | Order status update | Update external CRM |
+| `stock.low` | `{productId, merchantId, currentStock}` | Stock threshold reached | Auto-reorder from supplier |
+| `merchant.logged_in` | `{merchantId, timestamp}` | Merchant logs into PWA | CRM activity tracking |
+| `notification.subscribed` | `{merchantId, subscription}` | Push notification enabled | Add to external notification routing |
+
+**PWA-side implementation:**
+
+```javascript
+// Future: Webhook registration in app.js
+async function registerWebhook(endpointUrl, events) {
+    return await apiPost(`${BASE_URL}/api/v2/webhooks/register`, {
+        url: endpointUrl,
+        events: events,       // e.g. ['order.created', 'stock.low']
+        secret: generateSecret(),
+    });
+}
+
+// Future: Webhook management UI in merchant dashboard
+function renderIntegrationsTab() {
+    // List active webhooks
+    // Add/remove webhook endpoints
+    // View recent webhook delivery logs
+    // Test webhook endpoint
+}
+```
+
+#### Pattern C: OAuth 2.0 / SSO Identity Bridge
+
+For the PWA to securely interact with external systems on behalf of the merchant:
+
+```
+1. Merchant logs into PWA (current token auth)
+2. PWA redirects to external system's OAuth authorization URL
+3. External system returns authorization code
+4. PWA exchanges code for access + refresh tokens
+5. PWA stores tokens scoped per integration
+6. Subsequent API calls include external system's access token
+```
+
+**Storage in PWA state:**
+
+```javascript
+const state = {
+    // ... existing state
+    integrations: {
+        homeServicePlatform: {
+            enabled: false,
+            accessToken: null,
+            refreshToken: null,
+            platformName: null,
+            lastSyncAt: null,
+        },
+        erpSystem: {
+            enabled: false,
+            accessToken: null,
+            refreshToken: null,
+            platformName: null,
+            lastSyncAt: null,
+        },
+    }
+};
+```
+
+#### Pattern D: Message Queue / Pub-Sub (High Volume)
+
+For high-throughput scenarios (e.g., real-time inventory sync across multiple channels):
+
+```
+                    ┌──────────────────┐
+                    │  Message Queue   │
+                    │  (RabbitMQ/Kafka)│
+                    └────────┬─────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+              ▼              ▼              ▼
+      ┌────────────┐ ┌────────────┐ ┌────────────┐
+      │ PWA Backend│ │ Home       │ │ ERP /      │
+      │ (Consumer) │ │ Service    │ │ Warehouse  │
+      │            │ │ (Consumer) │ │ (Consumer) │
+      └────────────┘ └────────────┘ └────────────┘
+      ▲              ▲              ▲
+      │              │              │
+      └──────────────┼──────────────┘
+                     │
+          ┌──────────┴──────────┐
+          │  All producers push │
+          │  events to queue    │
+          └─────────────────────┘
+```
+
+### 13.3 Home Service Management — Specific Integration
+
+This is the most likely near-term integration. Below is a concrete plan.
+
+#### 13.3.1 Data Mapping
+
+| PWA Field | Home Service System Field | Direction |
+|-----------|--------------------------|-----------|
+| `order.orderId` | `serviceRequest.externalRef` | PWA → Home Service |
+| `order.customerName` | `serviceRequest.clientName` | PWA → Home Service |
+| `order.customerPhone` | `serviceRequest.clientPhone` | PWA → Home Service |
+| `order.deliveryDateTime` | `serviceRequest.scheduledDate` | PWA → Home Service |
+| `order.items[].productName` | `serviceRequest.serviceType` | PWA → Home Service |
+| `merchant.merchantId` | `serviceProvider.providerId` | PWA → Home Service |
+| `serviceRequest.status` | `order.orderStatus` | Home Service → PWA |
+| `serviceRequest.technicianName` | `order.assignedTechnician` | Home Service → PWA |
+| `serviceRequest.completionNotes` | `order.comments` | Home Service → PWA |
+
+#### 13.3.2 UI Additions Needed in PWA
+
+A new **"Services" tab** would be added to the merchant dashboard:
+
+```html
+<!-- Future: Services Tab -->
+<button class="tab-btn" data-tab="tab-services">
+    <svg><!-- wrench/home icon --></svg>
+    Services
+</button>
+
+<div id="tab-services" class="tab-content hidden">
+    <div class="section-header">
+        <h2>Service Requests</h2>
+        <p>Home service orders linked to your store.</p>
+    </div>
+
+    <!-- Integration status card -->
+    <div class="integration-card">
+        <div class="integration-status">
+            <span id="svc-integration-icon" class="status-icon off"></span>
+            <span id="svc-integration-label">Not Connected</span>
+        </div>
+        <button id="btn-svc-connect" class="btn-primary">Connect Platform</button>
+    </div>
+
+    <!-- Service requests list -->
+    <div id="svc-loading" class="loading-row hidden">Loading service requests…</div>
+    <div id="svc-empty" class="empty-state hidden">No service requests found.</div>
+    <div id="svc-error" class="error-msg hidden"></div>
+    <div id="svc-list"></div>
+</div>
+```
+
+#### 13.3.3 New JavaScript Module Structure
+
+```javascript
+// Future: js/services-integration.js
+// Separate module for external integration logic
+
+const INTEGRATION_API = {
+    CONNECT:    `${BASE_URL}/api/v2/integrations/connect`,
+    DISCONNECT: `${BASE_URL}/api/v2/integrations/disconnect`,
+    REQUESTS:   `${BASE_URL}/api/v2/integrations/service-requests`,
+    SYNC:       `${BASE_URL}/api/v2/integrations/sync`,
+};
+
+const state = {
+    // ...existing state
+    integrations: {
+        connected: false,
+        platformType: null,
+        platformName: null,
+        serviceRequests: [],
+        lastSyncAt: null,
+    }
+};
+
+async function connectIntegration(platformType, apiKey) {
+    // Register with external platform via backend bridge
+    const resp = await apiPost(INTEGRATION_API.CONNECT, {
+        platformType,  // 'home_service', 'erp', etc.
+        apiKey,
+        merchantId: state.merchantId,
+    });
+    if (resp.isSuccess) {
+        state.integrations.connected = true;
+        state.integrations.platformType = platformType;
+        updateIntegrationUI();
+    }
+}
+
+async function loadServiceRequests() {
+    const resp = await apiGet(INTEGRATION_API.REQUESTS);
+    if (resp.isSuccess) {
+        state.integrations.serviceRequests = resp.result || [];
+        renderServiceRequestsList();
+    }
+}
+
+async function syncWithExternalPlatform() {
+    // Bidirectional sync: push PWA data out, pull external data in
+    const resp = await apiPost(INTEGRATION_API.SYNC, {
+        lastSyncAt: state.integrations.lastSyncAt,
+        merchantId: state.merchantId,
+    });
+    if (resp.isSuccess) {
+        state.integrations.lastSyncAt = new Date().toISOString();
+        showToast('Sync completed successfully.');
+        // Refresh local data
+        await loadServiceRequests();
+        await loadOrders();
+    }
+}
+```
+
+### 13.4 Integration with Other External Systems
+
+| System Type | Integration Method | Data Exchanged | Priority |
+|-------------|-------------------|----------------|----------|
+| **Home Service CRMs** (FieldEdge, Housecall Pro, Jobber) | REST API + Webhooks | Orders, schedules, customer data, technician assignments | High |
+| **ERP Systems** (Odoo, SAP Business One, Microsoft Dynamics) | REST API + Batch Sync | Products, inventory, pricing, order history | High |
+| **Payment Gateways** (Stripe, PayTabs, Tap, MyFatoorah) | Embedded SDK + Webhooks | Payment status, refunds, invoices | High |
+| **Logistics / 3PL** (Shipa, Aramex, Fetchr) | REST API | Shipment tracking, delivery status, returns | Medium |
+| **POS Systems** (Square, Toast, Shopify POS) | REST API + Webhooks | Product sync, order creation, payment sync | Medium |
+| **Accounting Software** (Zoho Books, QuickBooks) | REST API + Batch | Invoice sync, expense tracking, reconciliation | Medium |
+| **Marketing Platforms** (Mailchimp, HubSpot) | Webhook → Trigger | Customer activity events, push notification triggers | Low |
+| **Analytics** (Google Analytics 4, Mixpanel) | SDK + Events | User behavior, order funnel, notification effectiveness | Low |
+
+### 13.5 Integration Security Considerations
+
+| Concern | Solution |
+|---------|----------|
+| **API key leakage** | Store integration keys in backend, never expose to PWA client; use short-lived tokens |
+| **Webhook authenticity** | Sign webhook payloads with HMAC-SHA256; PWA verifies signature before processing |
+| **OAuth token expiry** | Implement refresh token rotation; store encrypted tokens server-side |
+| **Rate limiting** | Implement per-integration rate limits; queue excessive requests |
+| **Data privacy** | Scope integration data to merchant-level only; never share cross-merchant data |
+| **Audit logging** | Log all integration API calls with merchant ID, timestamp, and action |
+| **Fail-safe** | Implement circuit breaker pattern; if external system is down, queue requests for retry |
+
+### 13.6 PWA Refactoring for Extensibility
+
+To support these integrations cleanly, the PWA codebase should be refactored:
+
+```
+Current:                          Future:
+js/                                js/
+├── app.js          (734 lines)    ├── app.js                (core bootstrap)
+├── app.js          (ALL logic)    ├── auth.js               (login/session)
+                                   ├── api-client.js         (HTTP layer)
+                                   ├── state.js              (state management)
+                                   ├── ui/
+                                   │   ├── tabs.js           (tab navigation)
+                                   │   ├── notifications.js  (push UI)
+                                   │   ├── orders.js         (orders UI)
+                                   │   ├── stock.js          (stock UI)
+                                   │   └── modals.js         (modal helpers)
+                                   ├── services/
+                                   │   ├── sw-manager.js     (service worker)
+                                   │   ├── push.js           (push subscriptions)
+                                   │   └── storage.js        (localStorage/IndexedDB)
+                                   └── integrations/
+                                       ├── bridge.js         (integration framework)
+                                       ├── home-service.js   (home service adapter)
+                                       ├── erp-sync.js       (ERP sync adapter)
+                                       └── webhooks.js       (webhook mgmt)
+```
+
+### 13.7 Implementation Roadmap for Integrations
+
+| Phase | Task | Effort | Dependencies |
+|-------|------|--------|-------------|
+| **P1** | Design and document OpenAPI spec for external integration endpoints | ~8 hr | Backend team alignment |
+| **P1** | Implement webhook registration + delivery system on backend | ~16 hr | OpenAPI spec |
+| **P1** | Add `/api/v2/external/*` endpoints for service orders | ~12 hr | Database schema changes |
+| **P2** | Refactor PWA JS into modular files (auth, api, ui, integrations) | ~8 hr | None |
+| **P2** | Build integration settings UI (connect/disconnect platform) | ~6 hr | Refactored PWA |
+| **P2** | Implement OAuth 2.0 authorization code flow in PWA | ~10 hr | Backend OAuth endpoints |
+| **P3** | Build "Services" tab with service request list + detail view | ~8 hr | Integration API ready |
+| **P3** | Implement bidirectional sync (push PWA data / pull external data) | ~12 hr | Webhook system ready |
+| **P3** | Add technician assignment tracking and display in order detail | ~6 hr | External system data |
+| **P4** | Integrate with specific home service platforms (per partnership) | ~20 hr each | Platform API access |
+| **P4** | Add CSV/PDF export for service requests (uses existing plugin) | ~4 hr | None |
+| **P4** | Build webhook delivery dashboard (log viewer, retry, test) | ~10 hr | Webhook system |
+
+**Total estimated effort for full integration ecosystem: ~100-120 hours**
+
+---
+
+## 14. Conclusion
 
 The system is a **vanilla JS PWA** wrapped in a **Capacitor Android** native shell. The frontend handles login, order viewing, stock management, and push notifications through a clean tab-based UI. The Android native layer adds background polling for new orders (with Arabic notifications) and a file download plugin.
+
+The architecture is well-positioned for future integration with external systems — the modular API design, existing auth framework, and Capacitor plugin system provide a solid foundation. The key to successful integration will be:
+1. **Refactoring** the monolithic `app.js` into modular files
+2. **Extending** the API with standardized external endpoints (OpenAPI)
+3. **Implementing** webhook event system for real-time data flow
+4. **Adding** OAuth 2.0 support for secure cross-system authentication
+5. **Building** the integration management UI within the existing tab framework
 
 **Current blockers for production:**
 1. Three critical JavaScript functions are missing (`openTierEditModal`, `closeTierEditModal`, `handleSaveTierEdit`)
@@ -737,4 +1095,4 @@ The system is a **vanilla JS PWA** wrapped in a **Capacitor Android** native she
 
 **Start with Phase 1 (Fix Critical Gaps)** — implement the three missing modal functions and their CSS styles. Then proceed through the roadmap phases to reach production readiness.
 
-The total estimated effort to go from current state to production release is approximately **20-25 hours** spread across the five phases.
+The total estimated effort to go from current state to production release is approximately **20-25 hours** spread across the five phases. Full integration ecosystem requires an additional **~100-120 hours**.

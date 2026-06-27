@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "sync": "powershell -NoProfile -ExecutionPolicy Bypass -File ./sync-from-source.ps1",
+    "build": "powershell -NoProfile -ExecutionPolicy Bypass -File ./sync-from-source.ps1",
+    "build:local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./sync-from-source.ps1 -ApiBase http://10.0.2.2:5001",
+    "build:prod": "powershell -NoProfile -ExecutionPolicy Bypass -File ./sync-from-source.ps1 -ApiBase https://api.blvd.com",
+    "build:android": "powershell -NoProfile -ExecutionPolicy Bypass -File ./sync-from-source.ps1 && npx cap copy android",
+    "build:vite": "vite build",
     "preview": "vite preview"
   },
   "devDependencies": {
@@ -14,12 +19,14 @@
   "dependencies": {
     "@capacitor/android": "8.3.4",
     "@capacitor/app": "8.1.0",
+    "@capacitor/camera": "^8.2.0",
     "@capacitor/cli": "8.3.4",
     "@capacitor/core": "8.3.4",
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/keyboard": "8.0.3",
     "@capacitor/local-notifications": "^8.2.0",
+    "@capacitor/push-notifications": "^8.0.2",
     "@capacitor/share": "^8.0.1",
     "@capacitor/status-bar": "8.0.2"
   }

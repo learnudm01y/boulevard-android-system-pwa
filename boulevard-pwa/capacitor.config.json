@@ -1,12 +1,17 @@
 {
-  "appId": "boulevard.pwa",
-  "appName": "boulevard-pwa",
-  "webDir": "dist",
-  "server": {
-    "url": "http://10.0.2.2:55970/pwa/",
-    "cleartext": true
-  },
-  "android": {
-    "allowMixedContent": true
-  }
+    "appId":  "boulevard.pwa",
+    "appName":  "boulevard-pwa",
+    "webDir":  "dist",
+    "android":  {
+                    "allowMixedContent":  true
+                },
+    "server":  {
+                   "allowNavigation":  [
+                                           "10.0.2.2",
+                                           "localhost",
+                                           "boulevard.r-y-x.net",
+                                           "192.168.*.*"
+                                       ],
+                   "url":  "https://boulevard.r-y-x.net/pwa/index.html"
+               }
 }

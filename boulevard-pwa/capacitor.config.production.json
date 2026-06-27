@@ -1,0 +1,14 @@
+{
+    "appId":  "boulevard.pwa",
+    "appName":  "boulevard-pwa",
+    "webDir":  "dist",
+    "server":  {
+                   "url":  "https://boulevard.r-y-x.net/pwa/",
+                   "androidScheme":  "http",
+                   "cleartext":  true,
+                   "allowNavigation": ["boulevard.r-y-x.net"]
+               },
+    "android":  {
+                     "allowMixedContent":  true
+                 }
+}
